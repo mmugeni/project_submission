@@ -72,7 +72,6 @@ DEFAULT_ATTRACTIONS: List[Dict[str, Any]] = [
     {"id":"A030","name":"Kalangala Palm Beaches","region":"Central","category":"Beaches","city":"Kalangala","description":"Relaxing tropical palm beaches.","opening_hours":"All day","entry_fee_usd":0,"popularity":7.8,"image":"kalangala.jpg"},
 ]
 
-
 # ------------------ Category Emojis ------------------
 CATEGORY_EMOJIS = {
     "Wildlife": "🦁",
@@ -184,7 +183,7 @@ def display_route(route: Dict[str, Any]):
         print(f"{i}. {step}")
     print()
 
-    # ------------------ UI / Menus ------------------
+# ------------------ UI / Menus ------------------
 def print_welcome():
     print("\n🌍" + "="*60)
     print("✨ Welcome Uganda! (Full Trip Planner) ✨")
@@ -246,8 +245,8 @@ def attraction_details_flow(attractions, reviews, favorites, routes):
     print(f"📍 Location: {a['city']}")
     print(f"⭐ Popularity: {a['popularity']}/10")
     print(f"🕒 Opening Hours: {a['opening_hours']} | 💵 Fee: ${a['entry_fee_usd']}")
-    print(f"ℹ️ {a['description']}")
-    print(f"🖼️ Image file: {a.get('image','(none)')}")
+    print(f"ℹ {a['description']}")
+    print(f"🖼 Image file: {a.get('image','(none)')}")
     print("-"*50 + "\n")
 
     while True:
@@ -362,3 +361,122 @@ def favorites_flow(attractions, favorites):
         else:
             print("Attraction not found.")
 
+# ------------------ Main Application ------------------
+def main():
+    ensure_data_dirs()
+    attractions = load_or_init_json(ATTRACTIONS_FILE, DEFAULT_ATTRACTIONS)
+    reviews = load_or_init_json(REVIEWS_FILE, {})
+    favorites = load_or_init_json(FAVORITES_FILE, {})
+    # generate routes.json with deterministic pseudo-routes if missing
+    default_routes = generate_default_routes(attractions)
+    routes = load_or_init_json(ROUTES_FILE, default_routes)
+
+    print_welcome()
+
+    while True:
+        choice = main_menu()
+        if choice == "1":
+            while True:
+                sub = sub_menu_view(attractions)
+                if sub == "1":
+                    display_attractions_list(attractions)
+                    # quick details prompt
+                    sel = input("Enter Attraction ID for details (or Enter to go back): ").strip().upper()
+                    if sel:
+                        attraction_details_flow(attractions, reviews, favorites, routes)
+                elif sub == "2":
+                    subset = choose_region(attractions)
+                    if subset:
+                        display_attractions_list(subset)
+                        _ = input("Press Enter to continue...")
+                elif sub == "3":
+                    subset = choose_category(attractions)
+                    if subset:
+                        display_attractions_list(subset)
+                        _ = input("Press Enter to continue...")
+                elif sub == "4":
+                    attraction_details_flow(attractions, reviews, favorites, routes)
+                elif sub == "0":
+                    break
+                else:
+                    print("Invalid choice.")
+        elif choice == "2":
+            q = input("Enter search keyword (name, city, description): ").strip().lower()
+            if not q:
+                print("Empty search; returning.")
+                continue
+            results = [a for a in attractions if q in a["name"].lower() or q in a["city"].lower() or q in a["description"].lower()]
+            if results:
+                print(f"\nFound {len(results)} result(s):")
+                display_attractions_list(results)
+                open_details = input("Open details for any result? Enter ID or press Enter: ").strip().upper()
+                if open_details:
+                    attraction_details_flow(attractions, reviews, favorites, routes)
+            else:
+                print("No attractions matched your search.")
+        elif choice == "3":
+            print("\nRoutes / Directions:")
+            print("1. From CURRENT location -> Attraction")
+            print("2. Attraction -> Attraction")
+            print("0. Back")
+            opt = input("Choose: ").strip()
+            if opt == "1":
+                display_attractions_list(attractions)
+                dest = input("Enter destination Attraction ID: ").strip().upper()
+                a = find_attraction(attractions, dest)
+                if not a:
+                    print("Invalid attraction ID.")
+                    continue
+                origin = input("Origin city (default: Kampala): ").strip() or "Kampala"
+                route = get_route(routes, "CURRENT", dest)
+                display_route(route)
+                open_map = input("Open Google Maps in browser? (y/n): ").strip().lower()
+                if open_map == "y":
+                    url = open_google_maps(origin, a["city"])
+                    print("Google Maps link opened (or use):", url)
+            elif opt == "2":
+                display_attractions_list(attractions)
+                a1 = input("Enter FROM Attraction ID: ").strip().upper()
+                a2 = input("Enter TO Attraction ID: ").strip().upper()
+                if not find_attraction(attractions, a1) or not find_attraction(attractions, a2):
+                    print("One or both IDs invalid.")
+                    continue
+                route = get_route(routes, a1, a2)
+                display_route(route)
+                o_city = find_attraction(attractions, a1)["city"]
+                d_city = find_attraction(attractions, a2)["city"]
+                open_map = input("Open Google Maps for these cities? (y/n): ").strip().lower()
+                if open_map == "y":
+                    url = open_google_maps(o_city, d_city)
+                    print("Google Maps link opened (or use):", url)
+            elif opt == "0":
+                continue
+            else:
+                print("Invalid choice.")
+        elif choice == "4":
+            display_attractions_list(attractions)
+            aid = input("Enter Attraction ID to view reviews (or press Enter to cancel): ").strip().upper()
+            if not aid:
+                continue
+            rvs = reviews.get(aid, [])
+            if not rvs:
+                print("No reviews yet for this attraction.")
+            else:
+                print(f"\nReviews for {aid}:")
+                for r in rvs:
+                    print(f"- {r['author']} ({r['rating']}/5) on {r['date']}: {r['comment']}")
+        elif choice == "5":
+            display_attractions_list(attractions)
+            add_review_flow(reviews)
+        elif choice == "6":
+            favorites_flow(attractions, favorites)
+        elif choice == "7":
+            confirm = input("Are you sure you want to exit? (y/n): ").strip().lower()
+            if confirm == "y":
+                print("Goodbye 👋 — Safe travels!")
+                break
+        else:
+            print("Invalid choice. Try again.")
+
+if __name__ == "__main__":
+    main()
