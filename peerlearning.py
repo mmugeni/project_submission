@@ -72,3 +72,114 @@ DEFAULT_ATTRACTIONS: List[Dict[str, Any]] = [
     {"id":"A030","name":"Kalangala Palm Beaches","region":"Central","category":"Beaches","city":"Kalangala","description":"Relaxing tropical palm beaches.","opening_hours":"All day","entry_fee_usd":0,"popularity":7.8,"image":"kalangala.jpg"},
 ]
 
+
+# ------------------ Category Emojis ------------------
+CATEGORY_EMOJIS = {
+    "Wildlife": "🦁",
+    "Hiking": "🗻",
+    "Cultural": "🕌",
+    "Beaches": "🌊",
+    "Natural Wonders": "🌳"
+}
+
+# ------------------ Helpers ------------------
+def ensure_data_dirs():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+def save_json(path: Path, obj: Any):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
+
+def load_or_init_json(path: Path, default: Any):
+    if not path.exists():
+        save_json(path, default)
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def id_to_num(aid: str) -> int:
+    return sum(ord(c) for c in aid)
+
+def generate_default_routes(attractions: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    routes: Dict[str, Dict[str, Any]] = {}
+    # CURRENT -> each attraction
+    for a in attractions:
+        n = id_to_num(a["id"])
+        dist = 20 + (n % 400)
+        time_min = int(dist * 1.8) + (n % 25)
+        routes[f"CURRENT__{a['id']}"] = {
+            "distance_km": dist,
+            "time_min": time_min,
+            "steps": [f"Drive from CURRENT location to {a['name']} in {a['city']}"]
+        }
+    # attraction -> attraction (directed)
+    for a, b in itertools.permutations(attractions, 2):
+        n = abs(id_to_num(a["id"]) - id_to_num(b["id"]))
+        dist = 8 + (n % 250)
+        time_min = int(dist * 2) + (n % 20)
+        key = f"{a['id']}{b['id']}"
+        routes[key] = {
+            "distance_km": dist,
+            "time_min": time_min,
+            "steps": [f"Drive from {a['city']} to {b['city']} (main road)", f"Arrive at {b['name']}"]
+        }
+    return routes
+
+def find_attraction(attractions: List[Dict[str, Any]], aid: str) -> Dict[str, Any]:
+    aid = (aid or "").strip().upper()
+    for a in attractions:
+        if a["id"].upper() == aid:
+            return a
+    return None
+
+def display_attractions_list(attractions: List[Dict[str, Any]]):
+    print()
+    for a in attractions:
+        emoji = CATEGORY_EMOJIS.get(a["category"], "📍")
+        print(f"{a['id']}: {emoji} {a['name']} — {a['city']} (Pop {a['popularity']})")
+    print()
+
+def open_image_file(filename: str):
+    path = IMAGES_DIR / filename
+    if not path.exists():
+        print(f"⚠ Image not found: {path}  — put the file in data/images/")
+        return
+    system = platform.system()
+    try:
+        if system == "Windows":
+            os.startfile(path)
+        elif system == "Darwin":
+            subprocess.run(["open", str(path)])
+        else:
+            # Linux and other: try xdg-open
+            subprocess.run(["xdg-open", str(path)])
+    except Exception as e:
+        print("⚠ Could not open image automatically (", e, "). Path:", path)
+
+def open_google_maps(origin: str, destination: str):
+    o = origin or ""
+    d = destination or ""
+    url = f"https://www.google.com/maps/dir/?api=1&origin={quote_plus(o)}&destination={quote_plus(d)}"
+    try:
+        webbrowser.open(url)
+    except Exception as e:
+        print("⚠ Could not open browser:", e)
+    return url
+
+def get_route(routes: Dict[str, Any], from_id: str, to_id: str) -> Dict[str, Any]:
+    key = f"{from_id.upper()}{to_id.upper()}"
+    if key in routes:
+        return routes[key]
+    # fallback dynamic
+    a_num = id_to_num(from_id)
+    b_num = id_to_num(to_id)
+    n = abs(a_num - b_num)
+    dist = 10 + (n % 300)
+    time_min = int(dist * 2) + (n % 20)
+    return {"distance_km": dist, "time_min": time_min, "steps":[f"Drive from {from_id} to {to_id}"]}
+
+def display_route(route: Dict[str, Any]):
+    print(f"\nDistance: {route['distance_km']} km | Time: {route['time_min']} minutes")
+    for i, step in enumerate(route.get("steps", []), start=1):
+        print(f"{i}. {step}")
+    print()
