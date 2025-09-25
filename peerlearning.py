@@ -183,3 +183,182 @@ def display_route(route: Dict[str, Any]):
     for i, step in enumerate(route.get("steps", []), start=1):
         print(f"{i}. {step}")
     print()
+
+    # ------------------ UI / Menus ------------------
+def print_welcome():
+    print("\n🌍" + "="*60)
+    print("✨ Welcome Uganda! (Full Trip Planner) ✨")
+    print("="*60 + "\n")
+
+def main_menu():
+    print("\n📌 Main Menu:")
+    print("1. View Attractions")
+    print("2. Search Attractions")
+    print("3. Plan Route / Directions")
+    print("4. View Reviews")
+    print("5. Add a Review")
+    print("6. Favorites (Save / View / Remove)")
+    print("7. Exit")
+    return input("Enter choice number: ").strip()
+
+def sub_menu_view(attractions):
+    print("\nView Attractions:")
+    print("1. View all")
+    print("2. View by Region")
+    print("3. View by Category")
+    print("4. View single attraction (details + open image / map)")
+    print("0. Back")
+    return input("Choose: ").strip()
+
+def choose_region(attractions):
+    regions = sorted({a["region"] for a in attractions})
+    for i, r in enumerate(regions, 1):
+        print(f"{i}. {r}")
+    try:
+        idx = int(input("Choose region number: ").strip())
+        return [a for a in attractions if a["region"] == regions[idx-1]]
+    except Exception:
+        print("Invalid choice.")
+        return []
+
+def choose_category(attractions):
+    cats = sorted({a["category"] for a in attractions})
+    for i, c in enumerate(cats, 1):
+        print(f"{i}. {c}")
+    try:
+        idx = int(input("Choose category number: ").strip())
+        return [a for a in attractions if a["category"] == cats[idx-1]]
+    except Exception:
+        print("Invalid choice.")
+        return []
+
+def attraction_details_flow(attractions, reviews, favorites, routes):
+    aid = input("Enter Attraction ID (e.g. A001) for details (or press Enter to cancel): ").strip().upper()
+    if not aid:
+        return
+    a = find_attraction(attractions, aid)
+    if not a:
+        print("❌ Attraction not found.")
+        return
+    emoji = CATEGORY_EMOJIS.get(a["category"], "📍")
+    print("\n" + "-"*50)
+    print(f"{emoji} {a['id']}: {a['name']} ({a['category']}, {a['region']})")
+    print(f"📍 Location: {a['city']}")
+    print(f"⭐ Popularity: {a['popularity']}/10")
+    print(f"🕒 Opening Hours: {a['opening_hours']} | 💵 Fee: ${a['entry_fee_usd']}")
+    print(f"ℹ️ {a['description']}")
+    print(f"🖼️ Image file: {a.get('image','(none)')}")
+    print("-"*50 + "\n")
+
+    while True:
+        print("Options:")
+        print("1. Open image")
+        print("2. Open Google Maps directions (origin -> this attraction)")
+        print("3. View reviews for this attraction")
+        print("4. Add to favorites")
+        print("5. Add a review now")
+        print("0. Back")
+        opt = input("Choose option: ").strip()
+        if opt == "1":
+            print("Opening image (if available)...")
+            open_image_file(a.get("image",""))
+        elif opt == "2":
+            origin = input("Origin city (default: Kampala): ").strip() or "Kampala"
+            print("Opening Google Maps in browser...")
+            url = open_google_maps(origin, a["city"])
+            print("If browser didn't open, use this link:", url)
+        elif opt == "3":
+            rvs = reviews.get(aid, [])
+            if not rvs:
+                print("No reviews yet for this attraction.")
+            else:
+                print(f"\nReviews for {a['name']}:")
+                for rev in rvs:
+                    print(f"- {rev['author']} ({rev['rating']}/5) on {rev['date']}: {rev['comment']}")
+                print()
+        elif opt == "4":
+            user = "default_user"
+            favs = favorites.setdefault(user, [])
+            if aid in favs:
+                print("Already in favorites.")
+            else:
+                favs.append(aid)
+                save_json(FAVORITES_FILE, favorites)
+                print("⭐ Added to favorites.")
+        elif opt == "5":
+            add_review_flow(reviews, aid)
+            save_json(REVIEWS_FILE, reviews)
+        elif opt == "0":
+            break
+        else:
+            print("Invalid option.")
+
+def add_review_flow(reviews, aid_hint=None):
+    if aid_hint:
+        aid = aid_hint
+    else:
+        aid = input("Enter Attraction ID to review: ").strip().upper()
+    if not aid:
+        print("Cancelled.")
+        return
+    author = input("Your name (leave blank for Anonymous): ").strip() or "Anonymous"
+    while True:
+        try:
+            rating_str = input("Rating (1-5, default 5): ").strip() or "5"
+            rating = int(rating_str)
+            if rating < 1 or rating > 5:
+                raise ValueError
+            break
+        except Exception:
+            print("Please enter a valid integer rating from 1 to 5.")
+    comment = input("Comment: ").strip() or "No comment."
+    entry = {"author": author, "rating": rating, "comment": comment, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    reviews.setdefault(aid, []).append(entry)
+    save_json(REVIEWS_FILE, reviews)
+    print("✅ Review saved. Thanks!")
+
+def favorites_flow(attractions, favorites):
+    user = "default_user"
+    favs = favorites.get(user, [])
+    if not favs:
+        print("You have no favorites yet. Use the attraction details to add favorites.")
+        should_add = input("Would you like to add one now? (y/n): ").strip().lower()
+        if should_add == "y":
+            display_attractions_list(attractions)
+            fid = input("Enter Attraction ID to add to favorites: ").strip().upper()
+            if find_attraction(attractions, fid):
+                favorites.setdefault(user, []).append(fid)
+                save_json(FAVORITES_FILE, favorites)
+                print("⭐ Added to favorites.")
+            else:
+                print("Invalid ID.")
+        return
+    print("\nYour Favorites:")
+    for fid in favs:
+        a = find_attraction(attractions, fid)
+        if a:
+            print(f"- {a['id']}: {a['name']} ({a['city']})")
+        else:
+            print(f"- {fid} (missing in attractions list)")
+    print()
+    print("Options: 1. Remove a favorite  2. View favorite details  0. Back")
+    opt = input("Choose: ").strip()
+    if opt == "1":
+        rid = input("Enter Attraction ID to remove: ").strip().upper()
+        if rid in favorites.get(user, []):
+            favorites[user].remove(rid)
+            save_json(FAVORITES_FILE, favorites)
+            print("Removed.")
+        else:
+            print("ID not in favorites.")
+    elif opt == "2":
+        vid = input("Enter Attraction ID to view details: ").strip().upper()
+        a = find_attraction(attractions, vid)
+        if a:
+            print()
+            print(f"{a['id']}: {a['name']} — {a['city']}")
+            print("Opening image and Google Maps as options (use the details flow to interact).")
+            attraction_details_flow(attractions, reviews, favorites, {})  # reuse details flow (reviews & favorites persisted)
+        else:
+            print("Attraction not found.")
+
